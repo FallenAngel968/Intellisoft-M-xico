@@ -34,34 +34,8 @@ const InteractiveAssistant = () => {
   const [inputMessage, setInputMessage] = useState('')
   const [isTyping, setIsTyping] = useState(false)
   const [showSuggestions, setShowSuggestions] = useState(true)
+  const [isStreaming, setIsStreaming] = useState(false)
   const messagesEndRef = useRef(null)
-
-  const predefinedResponses = {
-    'app móvil': {
-      text: '¡Excelente! Desarrollar una app móvil es una gran decisión. Te recomiendo nuestro servicio de Aplicaciones Móviles que incluye desarrollo nativo para iOS y Android, o multiplataforma con React Native. ¿Qué tipo de app tienes en mente?',
-      suggestions: ['App de e-commerce', 'App corporativa', 'App de servicios', 'Juego móvil']
-    },
-    'tienda online': {
-      text: 'Perfecto para expandir tu negocio. Nuestro servicio de E-commerce incluye desarrollo completo con Shopify, WooCommerce o soluciones personalizadas. Integramos pasarelas de pago mexicanas y optimizamos para conversiones. ¿Ya tienes productos o servicios definidos?',
-      suggestions: ['Tengo productos físicos', 'Vendo servicios digitales', 'Marketplace', 'B2B E-commerce']
-    },
-    'nube': {
-      text: 'La migración a la nube es fundamental para la escalabilidad. Ofrecemos migración completa a AWS, Azure o Google Cloud, con arquitecturas serverless y microservicios. Reducirás costos hasta un 40%. ¿Qué sistemas tienes actualmente?',
-      suggestions: ['Servidores físicos', 'Hosting compartido', 'Sistema legacy', 'Múltiples sistemas']
-    },
-    'ia': {
-      text: 'La Inteligencia Artificial puede revolucionar tu negocio. Implementamos chatbots, análisis predictivo, automatización de procesos y machine learning. ¿Qué procesos te gustaría automatizar?',
-      suggestions: ['Atención al cliente', 'Análisis de datos', 'Procesos repetitivos', 'Recomendaciones']
-    },
-    'web': {
-      text: 'Desarrollo web moderno con React, Vue.js o Angular. Creamos sitios responsivos, rápidos y optimizados para SEO. Incluimos panel de administración y analytics. ¿Es para empresa o proyecto personal?',
-      suggestions: ['Sitio corporativo', 'Landing page', 'Portal web', 'Sistema web']
-    },
-    'default': {
-      text: 'Entiendo tu consulta. Como empresa líder en soluciones tecnológicas en México, podemos ayudarte con desarrollo web, apps móviles, e-commerce, soluciones cloud, big data y ciberseguridad. ¿Te interesa algún servicio en particular?',
-      suggestions: ['Ver todos los servicios', 'Agendar consulta', 'Casos de éxito', 'Cotización personalizada']
-    }
-  }
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -71,14 +45,80 @@ const InteractiveAssistant = () => {
     scrollToBottom()
   }, [messages])
 
-  const getResponseKey = (message) => {
-    const lowerMessage = message.toLowerCase()
-    if (lowerMessage.includes('app') || lowerMessage.includes('móvil') || lowerMessage.includes('aplicacion')) return 'app móvil'
-    if (lowerMessage.includes('tienda') || lowerMessage.includes('ecommerce') || lowerMessage.includes('e-commerce')) return 'tienda online'
-    if (lowerMessage.includes('nube') || lowerMessage.includes('cloud') || lowerMessage.includes('migra')) return 'nube'
-    if (lowerMessage.includes('ia') || lowerMessage.includes('inteligencia') || lowerMessage.includes('artificial')) return 'ia'
-    if (lowerMessage.includes('web') || lowerMessage.includes('sitio') || lowerMessage.includes('página')) return 'web'
-    return 'default'
+  // Función para llamar a la API de chat
+  const callChatAPI = async (messageText, conversationHistory) => {
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: messageText,
+          conversationHistory: conversationHistory
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      return response
+    } catch (error) {
+      console.error('Error calling chat API:', error)
+      throw error
+    }
+  }
+
+  // Función para procesar streaming
+  const processStreamingResponse = async (response, botMessageId) => {
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let fullText = ''
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        
+        if (done) break
+
+        const chunk = decoder.decode(value)
+        const lines = chunk.split('\n')
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6).trim()
+            
+            if (data === '[DONE]') {
+              setIsStreaming(false)
+              return fullText
+            }
+
+            try {
+              const parsed = JSON.parse(data)
+              if (parsed.content) {
+                fullText += parsed.content
+                
+                // Actualizar el mensaje en tiempo real
+                setMessages(prev => prev.map(msg => 
+                  msg.id === botMessageId 
+                    ? { ...msg, text: fullText }
+                    : msg
+                ))
+              }
+            } catch (e) {
+              // Ignorar errores de parsing
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error processing stream:', error)
+      setIsStreaming(false)
+      throw error
+    }
+
+    return fullText
   }
 
   const handleSendMessage = async (messageText = inputMessage) => {
@@ -95,24 +135,70 @@ const InteractiveAssistant = () => {
     setInputMessage('')
     setIsTyping(true)
     setShowSuggestions(false)
+    setIsStreaming(true)
 
-    // Simular tiempo de respuesta del bot
-    await new Promise(resolve => setTimeout(resolve, 1500))
-
-    const responseKey = getResponseKey(messageText)
-    const response = predefinedResponses[responseKey]
-
+    // Crear mensaje del bot vacío para streaming
+    const botMessageId = Date.now() + 1
     const botMessage = {
-      id: Date.now() + 1,
-      text: response.text,
+      id: botMessageId,
+      text: '',
       sender: 'bot',
       timestamp: new Date(),
-      suggestions: response.suggestions
+      suggestions: []
     }
 
     setMessages(prev => [...prev, botMessage])
-    setIsTyping(false)
-    setShowSuggestions(true)
+
+    try {
+      // Preparar historial de conversación
+      const conversationHistory = messages
+        .filter(msg => msg.sender !== 'bot' || msg.text !== '') // Excluir mensajes vacíos
+        .map(msg => ({
+          role: msg.sender === 'user' ? 'user' : 'assistant',
+          content: msg.text
+        }))
+
+      // Llamar a la API
+      const response = await callChatAPI(messageText, conversationHistory)
+      
+      // Procesar respuesta streaming
+      await processStreamingResponse(response, botMessageId)
+
+      // Generar sugerencias básicas después de la respuesta
+      const suggestions = [
+        'Cuéntame más detalles',
+        'Quiero una cotización',
+        'Agendar consulta',
+        'Ver otros servicios'
+      ]
+
+      // Actualizar con sugerencias
+      setMessages(prev => prev.map(msg => 
+        msg.id === botMessageId 
+          ? { ...msg, suggestions }
+          : msg
+      ))
+
+      setShowSuggestions(true)
+
+    } catch (error) {
+      console.error('Error sending message:', error)
+      
+      // Mostrar mensaje de error
+      setMessages(prev => prev.map(msg => 
+        msg.id === botMessageId 
+          ? { 
+              ...msg, 
+              text: 'Lo siento, hubo un error al procesar tu mensaje. Por favor intenta de nuevo o contacta directamente con nuestro equipo.',
+              suggestions: ['Reintentar', 'Contactar soporte', 'Agendar consulta']
+            }
+          : msg
+      ))
+      setShowSuggestions(true)
+    } finally {
+      setIsTyping(false)
+      setIsStreaming(false)
+    }
   }
 
   const handleSuggestionClick = (suggestion) => {
