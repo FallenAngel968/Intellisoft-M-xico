@@ -20,7 +20,7 @@ const InteractiveAssistant = () => {
   const [messages, setMessages] = useState([
     {
       id: 1,
-      text: '¡Hola! Soy ARIA, el Asistente de Recomendaciones IA de INTELLISOFT. ¿En qué puedo ayudarte hoy?',
+      text: '¡Hola! Soy ARIA, el Asistente de Recomendaciones IA de Intellisoft México. ¿En qué puedo ayudarte hoy?',
       sender: 'bot',
       timestamp: new Date(),
       suggestions: [
