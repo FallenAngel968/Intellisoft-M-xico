@@ -211,8 +211,8 @@ npm run build
 
 **INTELLISOFT MÉXICO**
 - **Email**: contacto@intellisoft.mx
-- **Teléfono**: +52 55 1234 5678
-- **Dirección**: Av. Revolución 1425, Col. Tlacopac, CDMX
+- **Teléfono**: +52 222 206 3199
+- **Dirección**: Av. 5 oriente, Cuacnopalan, Pue.
 - **Website**: www.intellisoft.mx
 
 ## 📄 Licencia
