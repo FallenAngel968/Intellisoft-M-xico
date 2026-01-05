@@ -18,7 +18,7 @@ export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*')
 
     // Crear el prompt del sistema personalizado para INTELLISOFT
-    const systemPrompt = `Eres ARIA, el Asistente de Recomendaciones IA de INTELLISOFT, una empresa líder en soluciones tecnológicas en México. 
+    const systemPrompt = `Eres ARIA, el Asistente de Recomendaciones IA de 'Intellisoft México', una empresa líder en soluciones tecnológicas en México. 
 
 Tu personalidad:
 - Profesional pero cercano
